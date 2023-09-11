@@ -1,0 +1,193 @@
+#include <Servo.h>
+
+Servo leftServo;    // Servo object for the left hand
+Servo rightServo;   // Servo object for the right hand
+Servo headServo;    // Servo object for the head
+
+int leftPos = 90;   // Initial position of the left servo (midpoint)
+int rightPos = 90;  // Initial position of the right servo (midpoint)
+int headPos = 90;   // Initial position of the head servo (midpoint)
+
+bool isLeft = false;  // Flag to track the current state of the left servo
+bool isRight = false; // Flag to track the current state of the right servo
+bool isHeadForward = true; // Flag to track the current state of the head servo (forward)
+
+const int trigPin = A0; // Ultrasonic sensor trig pin (A0)
+const int echoPin = A1; // Ultrasonic sensor echo pin (A1)
+
+unsigned long lastCommandTime = 0; // Timestamp of the last received command
+const unsigned long commandDelay = 1000; // Delay between consecutive commands (milliseconds)
+
+int P_E = A5;
+
+bool executeNamaste = false; // Flag to execute namaste command
+bool objectDetected = false; // Flag to track object detection
+
+void setup() {
+  leftServo.attach(6);    // Attach the left servo to pin 6
+  rightServo.attach(7);   // Attach the right servo to pin 7
+  headServo.attach(5);    // Attach the head servo to pin 5
+  Serial.begin(9600);     // Initialize serial communication
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+
+  pinMode(P_E, INPUT_PULLUP);
+  delay(5000);
+}
+
+void loop() {
+  if (Serial.available() > 0) {
+    String command = Serial.readString(); // Read the incoming command as a string
+
+    // Check if enough time has passed since the last command
+    unsigned long currentTime = millis();
+    if (currentTime - lastCommandTime >= commandDelay) {
+      // Debugging: Print received command
+      Serial.print("Received command: ");
+      Serial.println(command);
+
+      if (command.indexOf("up left hand") != -1) {
+        if (!isLeft) { // Check if the left hand is not already in the "up" position
+          leftPos = 0;
+          leftServo.write(leftPos);
+          isLeft = true;
+        } else {
+          // Toggle back to the midpoint position
+          leftPos = 90;
+          leftServo.write(leftPos);
+          isLeft = false;
+        }
+      } else if (command.indexOf("down left hand") != -1) {
+        if (isLeft) { // Check if the left hand is not already in the "down" position
+          leftPos = 90;
+          leftServo.write(leftPos);
+          isLeft = false;
+        } else {
+          // Toggle to the "up" position
+          leftPos = 0;
+          leftServo.write(leftPos);
+          isLeft = true;
+        }
+      } else if (command.indexOf("up right hand") != -1) {
+        if (!isRight) { // Check if the right hand is not already in the "up" position
+          rightPos = 0;
+          rightServo.write(rightPos);
+          isRight = true;
+        } else {
+          // Toggle back to the midpoint position
+          rightPos = 90;
+          rightServo.write(rightPos);
+          isRight = false;
+        }
+      } else if (command.indexOf("down right hand") != -1) {
+        if (isRight) { // Check if the right hand is not already in the "down" position
+          rightPos = 90;
+          rightServo.write(rightPos);
+          isRight = false;
+        } else {
+          // Toggle to the "up" position
+          rightPos = 0;
+          rightServo.write(rightPos);
+          isRight = true;
+        }
+      } else if (command.indexOf("look forward") != -1) {
+        if (!isHeadForward) { // Check if the head is not already in the "forward" position
+          headPos = 90;
+          headServo.write(headPos);
+          isHeadForward = true;
+        }
+      } else if (command.indexOf("look left") != -1) {
+        // Move the head servo to the left (180-degree range)
+        headPos = 0;
+        headServo.write(headPos);
+        isHeadForward = false;
+      } else if (command.indexOf("look right") != -1) {
+        // Move the head servo to the right (180-degree range)
+        headPos = 180;
+        headServo.write(headPos);
+        isHeadForward = false;
+      } else if (command.indexOf("look everything") != -1) {
+        // Move the head servo to look everywhere (360-degree range)
+        headPos = 360;
+        headServo.write(headPos);
+        isHeadForward = false;
+      } else if (command.indexOf("namaste") != -1) {
+        // Move both left and right hand servos up and down simultaneously
+        if (!isLeft && !isRight) { // Check if both are not already in the "up" position
+          leftPos = 0;
+          rightPos = 0;
+          leftServo.write(leftPos);
+          rightServo.write(leftPos); // Set rightPos to match leftPos
+          isLeft = true;
+          isRight = true;
+          executeNamaste = true; // Trigger namaste execution
+        }
+      }
+      
+      // Update the timestamp of the last received command
+      lastCommandTime = currentTime;
+    }
+  }
+  
+  // Check for object detection with ultrasonic sensor
+  long duration;
+  int distance;
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  duration = pulseIn(echoPin, HIGH);
+  distance = duration * 0.034 / 2;
+
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+
+  if (distance < 10 && distance > 2 && !objectDetected) {
+    // Object detected within 10cm, rotate the left hand motor
+    leftPos = 0; // Adjust the angle as needed
+    rightPos = 90; // Adjust the angle as needed
+
+    // Set P_E HIGH before motor rotation
+    digitalWrite(P_E, HIGH);
+
+    leftServo.write(leftPos);
+    rightServo.write(rightPos); // Set rightPos to match leftPos
+    delay(1000); // Delay for 1 second (adjust as needed)
+
+    // Return the left and right hand motors to their initial positions
+    leftPos = 90;
+    rightPos = 0;
+    leftServo.write(leftPos);
+    rightServo.write(rightPos);
+    
+    // Set P_E LOW after motor rotation
+    digitalWrite(P_E, LOW);
+    delay(500);
+    
+    objectDetected = true; // Set the object detected flag to true
+  } else if (distance >= 10) {
+    // Reset the object detected flag when the object is no longer detected
+    objectDetected = false;
+  }
+
+  // Execute namaste command if the flag is set
+  if (executeNamaste) {
+    // Set P_E HIGH before motor rotation
+    digitalWrite(P_E, HIGH);
+    delay(1000); // Delay for 1 second (adjust as needed)
+    
+    // Return the left and right hand motors to their initial positions
+    leftPos = 90;
+    rightPos = 90;
+    leftServo.write(leftPos);
+    rightServo.write(rightPos);
+    
+    // Set P_E LOW after motor rotation
+    digitalWrite(P_E, LOW);
+    delay(500);
+    
+    executeNamaste = false; // Reset the flag
+  }
+}
